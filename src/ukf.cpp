@@ -119,21 +119,21 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_pack) {
 	previous_timestamp_ = measurement_pack.timestamp_;
 	 
 	// Run prediction step
-	ukf_.Prediction(dt);
+	Prediction(dt);
 	
 	// Update
 	if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR) {
 	// Radar updates
-		ukf_.UpdateRadar(measurement_pack);
+		UpdateRadar(measurement_pack);
 	} 
 	else {
    // Laser updates
-		ukf_.UpdateLidar(measurement_pack);
+		UpdateLidar(measurement_pack);
 	}
 
 	// print the output
-	cout << "x_ = " << ukf_.x_ << endl;
-	cout << "P_ = " << ukf_.P_ << endl;
+	cout << "x_ = " << x_ << endl;
+	cout << "P_ = " << P_ << endl;
 }
 
 /**
@@ -142,12 +142,82 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_pack) {
  * measurement and this one.
  */
 void UKF::Prediction(double delta_t) {
-  /**
-  TODO:
-
-  Complete this function! Estimate the object's location. Modify the state
-  vector, x_. Predict sigma points, the state, and the state covariance matrix.
-  */
+  
+  // Create sigma points
+  // create augmented mean state
+	VectorXd x_aug = VectorXd(n_aug_);
+	x_aug.head(n_x_) = x_;
+	x_aug(n_aug_-2) = 0;
+	x_aug(n_aug_-1) = 0;
+	// create augmented covariance matrix
+	MatrixXd P_aug = MatrixXd(n_aug_,n_aug_);
+	P_aug.topLeftCorner(n_x_,n_x_) = P_;
+	P_aug.bottomRightCorner(n_noise_, n_noise_) = P_noise_;
+	//create square root matrix
+	MatrixXd A = P_aug.llt().matrixL();
+	A  *= sqrt(lambda_+n_aug_);
+	// create augmented sigma points matrix
+	MatrixXd Xsig_aug = MatrixXd(n_aug_,2*n_aug_+1);
+	Xsig_aug.col(0) = x_aug;
+	for (int i=0;i<n_aug_;i++){
+		Xsig_aug.col(i+1) = x_aug + A.col(i);
+		Xsig_aug.col(i+1+n_aug_) = x_aug - A.col(i);
+	}
+	
+	// Predict sigma points
+	VectorXd x 		= VectorXd(n_x_);
+	VectorXd x_dot	= VectorXd(n_x_);
+	VectorXd nu 	= VectorXd(n_noise_);
+	VectorXd nu_dot = VectorXd(n_x_);
+	//predict 2*(n_aug_)+1 sigma points
+	for (int i=0; i < (2*n_aug_+1);i++)
+	{
+	 x_aug = Xsig_aug.col(i);
+	 x = x_aug.head(n_x_);
+	 nu = x_aug.tail(n_noise_);
+	 
+	 // Create state derivative vector
+	 // Avoid division by zero
+	 if (fabs(x(4)) > 0.001){
+		x_dot(0) = (x(2)/x(4))*(sin(x(3)+x(4)*delta_t) - sin(x(3)) );
+		x_dot(1) = (x(2)/x(4))*(-cos(x(3)+x(4)*delta_t) + cos(x(3)) );
+		x_dot(3) = x(4)*delta_t;
+	 }
+	 else{
+		x_dot(0) = x(2)*cos(x(3)*delta_t);
+		x_dot(1) = x(2)*sin(x(3)*delta_t);
+		x_dot(3) = 0;
+	 }
+	 x_dot(2) = 0;
+	 x_dot(4) = 0;
+	 
+	 // Create noise vector
+	 nu_dot(0) = 0.5*(delta_t*delta_t)*cos(x(3))*nu(0);
+	 nu_dot(1) = 0.5*(delta_t*delta_t)*sin(x(3))*nu(0);
+	 nu_dot(2) = delta_t*nu(0);
+	 nu_dot(3) = 0.5*(delta_t*delta_t)*nu(1);
+	 nu_dot(4) = delta_t*nu(1);
+	// Write predicted sigma points into correct column
+	 Xsig_pred_.col(i) = x + x_dot + nu_dot;
+	}
+	
+	// Predict state and covariance
+	// Calculate mean
+  x_.fill(0);
+  for (int i=0;i<(2*n_aug_+1);i++){
+		x_ += weights_(i)*Xsig_pred_.col(i);
+  }
+  // Calculate covariance
+  P_.fill(0);
+  // state difference
+  VectorXd x_diff = VectorXd(n_x_);
+  for (int i=0;i<(2*n_aug_+1);i++){
+	 x_diff = Xsig_pred_.col(i) - x_;
+	 // Angle normalization
+    while (x_diff(3)> M_PI) x_diff(3)-=2.*M_PI;
+    while (x_diff(3)<-M_PI) x_diff(3)+=2.*M_PI;
+	 P_ += weights_(i)*x_diff*x_diff.transpose();
+  }  
 }
 
 /**
