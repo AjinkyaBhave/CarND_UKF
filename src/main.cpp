@@ -32,7 +32,7 @@ int main()
 
   // Create a Kalman Filter instance
   UKF ukf;
-
+	cout << "Here.";
   // used to compute the RMSE later
   Tools tools;
   vector<VectorXd> estimations;
@@ -128,6 +128,7 @@ int main()
     	  estimations.push_back(estimate);
 
     	  VectorXd RMSE = tools.CalculateRMSE(estimations, ground_truth);
+		  VectorXd NIS  = tools.CalculateNIS();
 
           json msgJson;
           msgJson["estimate_x"] = p_x;

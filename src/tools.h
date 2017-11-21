@@ -23,6 +23,10 @@ public:
   * A helper method to calculate RMSE.
   */
   VectorXd CalculateRMSE(const vector<VectorXd> &estimations, const vector<VectorXd> &ground_truth);
+  /**
+  * A helper method to calculate Normalised Innovation Squared values for radar and lidar measurements.
+  */
+  VectorXd CalculateNIS();
 
 };
 

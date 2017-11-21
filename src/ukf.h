@@ -22,9 +22,6 @@ public:
   ///* if this is false, radar measurements will be ignored (except for init)
   bool use_radar_;
 
-  // Noise vector dimension
-  int n_noise_ ;
-
   ///* previous timestamp in us
   long long previous_timestamp_;
 
@@ -55,9 +52,24 @@ public:
   ///* Augmented state dimension
   int n_aug_;
 
+  // Noise vector dimension
+  int n_noise_ ;
+  
+  // Radar measurements dimension
+  int n_rad_;
+  
+  // Lidar measurements dimension
+  int n_las_;
+
   ///* Sigma point spreading parameter
   double lambda_;
 
+  // Radar NIS
+  double NIS_rad;
+  
+  // Lidar NIS
+  double NIS_las;
+ 
   ///* state vector: [pos1 pos2 vel_abs yaw_angle yaw_rate] in SI units and rad
   VectorXd x_;
 
@@ -70,8 +82,20 @@ public:
   // Process noise matrix
   MatrixXd P_noise_;
   
+  // Radar measurement noise matrix
+  MatrixXd R_radar_;
+  
+  // Lidar measurement noise matrix
+  MatrixXd R_lidar_;
+  
   ///* Weights of sigma points
   VectorXd weights_;
+  
+  // Queue to store NIS for radar over complete run
+  std::vector<double> NIS_rad_;
+  
+  // Queue to store NIS for lidar over complete run
+  std::vector<double> NIS_las_;
   
   /**
    * Constructor
