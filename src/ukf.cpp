@@ -24,7 +24,7 @@ UKF::UKF() {
   std_a_ = 1;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 1;
+  std_yawdd_ = 0.5;
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -57,7 +57,7 @@ UKF::UKF() {
   n_lidar_ = 2;
 
   // Sigma point spreading parameter
-  lambda_ = 3;
+  lambda_ = 3-n_aug_;
   
   // initial state vector
   x_ = VectorXd(n_x_);
@@ -65,11 +65,11 @@ UKF::UKF() {
 
   // initial covariance matrix
   P_ = MatrixXd(n_x_, n_x_);
-  P_ <<  1,0,0,0,0,
-			0,1,0,0,0,
+  P_ <<  0.09,0,0,0,0,
+			0,0.09,0,0,0,
 			0,0,1,0,0,
-			0,0,0,1,0,
-			0,0,0,0,1;
+			0,0,0,0.9,0,
+			0,0,0,0,0.9;
 			
 	// Predicted sigma points matrix
 	Xsig_pred_ = MatrixXd(n_x_, 2 * n_aug_ + 1);
@@ -110,18 +110,17 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_pack) {
 
 		if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR) {
 			// Convert radar from polar to cartesian coordinates and initialize state.
-			cout << "Radar here.";
 			x_(0) = measurement_pack.raw_measurements_[0]* cos(measurement_pack.raw_measurements_[1]);
 			x_(1) = measurement_pack.raw_measurements_[0]* sin(measurement_pack.raw_measurements_[1]);
 			// Cannot calculate velocity from range rate directly, so assuming zero.
-			x_(2) = 0;
+			x_(2) = 4;
 			// Assuming bicyclist driving straight with zero turning rate.
 			x_(3) = 0;
 			x_(4) = 0;
 		}
 		else if (measurement_pack.sensor_type_ == MeasurementPackage::LASER) {
 			//set the state with the initial location, zero velocity, and driving straight.
-			x_ << measurement_pack.raw_measurements_[0], measurement_pack.raw_measurements_[1], 0, 0, 0;
+			x_ << measurement_pack.raw_measurements_[0], measurement_pack.raw_measurements_[1], 4, 0, 0;
 		}
 		else{
 			cout << "Invalid sensor type.\n";
@@ -238,8 +237,7 @@ void UKF::Prediction(double delta_t) {
 	for (int i=0;i<(2*n_aug_+1);i++){
 		x_diff = Xsig_pred_.col(i) - x_;
 		// Angle normalization
-		while (x_diff(3)> M_PI) x_diff(3)-=2.*M_PI;
-		while (x_diff(3)<-M_PI) x_diff(3)+=2.*M_PI;
+		x_diff(3) = atan2(sin(x_diff(3)),cos(x_diff(3)));
 		P_ += weights_(i)*x_diff*x_diff.transpose();
 	}  
 }
@@ -294,8 +292,7 @@ void UKF::UpdateLidar(MeasurementPackage measurement_pack) {
 	for (int i=0;i<(2*n_aug_+1);i++){
 		x_diff = Xsig_pred_.col(i) - x_;
 		// Angle normalization
-		while (x_diff(3)> M_PI) x_diff(3)-=2.*M_PI;
-		while (x_diff(3)<-M_PI) x_diff(3)+=2.*M_PI;
+		x_diff(3) = atan2(sin(x_diff(3)),cos(x_diff(3)));
 		z_diff = Zsig_pred.col(i) - z_pred;
 		Tc += weights_(i)*x_diff*z_diff.transpose();
 	}
@@ -369,12 +366,10 @@ void UKF::UpdateRadar(MeasurementPackage measurement_pack) {
 	for (int i=0;i<(2*n_aug_+1);i++){
 		x_diff = Xsig_pred_.col(i) - x_;
 		// Angle normalization
-		while (x_diff(3)> M_PI) x_diff(3)-=2.*M_PI;
-		while (x_diff(3)<-M_PI) x_diff(3)+=2.*M_PI;
+		x_diff(3) = atan2(sin(x_diff(3)),cos(x_diff(3)));
 		z_diff = Zsig_pred.col(i) - z_pred;
 		// Angle normalization
-		while (z_diff(1)> M_PI) z_diff(1)-=2.*M_PI;
-		while (z_diff(1)<-M_PI) z_diff(1)+=2.*M_PI;
+		z_diff(1) = atan2(sin(z_diff(1)),cos(z_diff(1)));
 		Tc += weights_(i)*x_diff*z_diff.transpose();
 	}
 	// Calculate Kalman gain K;
