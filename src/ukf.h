@@ -17,7 +17,7 @@ public:
   bool is_initialized_;
 
   ///* if this is false, laser measurements will be ignored (except for init)
-  bool use_laser_;
+  bool use_lidar_;
 
   ///* if this is false, radar measurements will be ignored (except for init)
   bool use_radar_;
@@ -56,20 +56,14 @@ public:
   int n_noise_ ;
   
   // Radar measurements dimension
-  int n_rad_;
+  int n_radar_;
   
   // Lidar measurements dimension
-  int n_las_;
+  int n_lidar_;
 
   ///* Sigma point spreading parameter
   double lambda_;
 
-  // Radar NIS
-  double NIS_rad;
-  
-  // Lidar NIS
-  double NIS_las;
- 
   ///* state vector: [pos1 pos2 vel_abs yaw_angle yaw_rate] in SI units and rad
   VectorXd x_;
 
@@ -92,10 +86,10 @@ public:
   VectorXd weights_;
   
   // Queue to store NIS for radar over complete run
-  std::vector<double> NIS_rad_;
+  std::vector<double> NIS_radar_;
   
   // Queue to store NIS for lidar over complete run
-  std::vector<double> NIS_las_;
+  std::vector<double> NIS_lidar_;
   
   /**
    * Constructor
