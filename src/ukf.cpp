@@ -65,17 +65,13 @@ UKF::UKF() {
 
   // initial covariance matrix
   P_ = MatrixXd(n_x_, n_x_);
-  P_ <<  0.09,0,0,0,0,
-			0,0.09,0,0,0,
-			0,0,1,0,0,
-			0,0,0,0.9,0,
-			0,0,0,0,0.9;
+  P_.fill(0); 
 			
 	// Predicted sigma points matrix
 	Xsig_pred_ = MatrixXd(n_x_, 2 * n_aug_ + 1);
-	Xsig_pred_.fill(0.0);
+	Xsig_pred_.fill(0);
 	
-	// Process noise matrix
+	// Process noise covariance matrix
 	P_noise_ = MatrixXd(n_noise_, n_noise_);
 	P_noise_ << std_a_*std_a_, 0, 0, std_yawdd_*std_yawdd_;
 	
@@ -93,7 +89,7 @@ UKF::UKF() {
 				 
 	// Lidar measurement covariance matrix
 	R_lidar_ = MatrixXd(n_lidar_,n_lidar_);
-	R_lidar_ << std_laspx_, 0, 0, std_laspy_;
+	R_lidar_ << std_laspx_*std_laspx_, 0, 0, std_laspy_*std_laspy_;
 }
 
 UKF::~UKF() {}
@@ -112,15 +108,33 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_pack) {
 			// Convert radar from polar to cartesian coordinates and initialize state.
 			x_(0) = measurement_pack.raw_measurements_[0]* cos(measurement_pack.raw_measurements_[1]);
 			x_(1) = measurement_pack.raw_measurements_[0]* sin(measurement_pack.raw_measurements_[1]);
-			// Cannot calculate velocity from range rate directly, so assuming zero.
+			// Assume bicyclist travelling at average speed of 15 km/hr or 4 m/s
 			x_(2) = 4;
 			// Assuming bicyclist driving straight with zero turning rate.
 			x_(3) = 0;
 			x_(4) = 0;
+			
+			// Initialise error covariance matrix based on radar sensor std's
+			P_(0,0) = 0.09;
+			P_(1,1) = 0.09;
+			P_(2,2) = 1;
+			P_(3,3) = 0.9;
+			P_(4,4) = 0.9;
+			/*0.09,0,0,0,0,
+			0,0.09,0,0,0,
+			0,0,1,0,0,
+			0,0,0,0.9,0,
+			0,0,0,0,0.9;*/
 		}
 		else if (measurement_pack.sensor_type_ == MeasurementPackage::LASER) {
-			//set the state with the initial location, zero velocity, and driving straight.
+			// Set the state with the lidar initial location, 15 km/hr velocity, and driving straight.
 			x_ << measurement_pack.raw_measurements_[0], measurement_pack.raw_measurements_[1], 4, 0, 0;
+			// Initialise error covariance matrix based on lidar sensor std's
+			P_(0,0) = 0.5;
+			P_(1,1) = 0.5;
+			P_(2,2) = 1;
+			P_(3,3) = 1;
+			P_(4,4) = 1;
 		}
 		else{
 			cout << "Invalid sensor type.\n";
@@ -146,16 +160,20 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_pack) {
 	// Radar updates
 		if(use_radar_)
 			UpdateRadar(measurement_pack);
+		else
+			cout << "Radar not used\n";
 	} 
 	else {
    // Laser updates
 		if(use_lidar_)
 			UpdateLidar(measurement_pack);
+		else
+			cout << "Lidar not used \n";
 	}
 
-	// print the output
-	cout << "x_ = " << x_ << endl;
-	cout << "P_ = " << P_ << endl;
+	// Print the output
+	//cout << "x_ = " << x_ << endl;
+	//cout << "P_ = " << P_ << endl;
 }
 
 /**
@@ -166,14 +184,14 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_pack) {
 void UKF::Prediction(double delta_t) {
   
   // Create sigma points
-  // create augmented mean state
+  // Create augmented mean state
 	VectorXd x_aug = VectorXd(n_aug_);
 	x_aug.head(n_x_) = x_;
 	x_aug(n_aug_-2) = 0;
 	x_aug(n_aug_-1) = 0;
 	// create augmented covariance matrix
 	MatrixXd P_aug = MatrixXd(n_aug_,n_aug_);
-	P_aug.fill(0.0);
+	P_aug.fill(0);
 	P_aug.topLeftCorner(n_x_,n_x_) = P_;
 	P_aug.bottomRightCorner(n_noise_, n_noise_) = P_noise_;
 	//create square root matrix
@@ -188,54 +206,55 @@ void UKF::Prediction(double delta_t) {
 	}
 	
 	// Predict sigma points
-	VectorXd x 		= VectorXd(n_x_);
-	VectorXd x_dot	= VectorXd(n_x_);
-	VectorXd nu 	= VectorXd(n_noise_);
+	VectorXd x_sig  = VectorXd(n_x_);
+	VectorXd x_dot	 = VectorXd(n_x_);
+	VectorXd nu 	 = VectorXd(n_noise_);
 	VectorXd nu_dot = VectorXd(n_x_);
 	//predict 2*(n_aug_)+1 sigma points
 	for (int i=0; i < (2*n_aug_+1);i++)
 	{
-	 x_aug = Xsig_aug.col(i);
-	 x = x_aug.head(n_x_);
-	 nu = x_aug.tail(n_noise_);
+		x_aug = Xsig_aug.col(i);
+		x_sig = x_aug.head(n_x_);
+		nu = x_aug.tail(n_noise_);
 	 
-	 // Create state derivative vector
-	 // Avoid division by zero
-	 if (fabs(x(4)) > 0.001){
-		x_dot(0) = (x(2)/x(4))*(sin(x(3)+x(4)*delta_t) - sin(x(3)) );
-		x_dot(1) = (x(2)/x(4))*(-cos(x(3)+x(4)*delta_t) + cos(x(3)) );
-		x_dot(3) = x(4)*delta_t;
-	 }
-	 else{
-		x_dot(0) = x(2)*cos(x(3)*delta_t);
-		x_dot(1) = x(2)*sin(x(3)*delta_t);
-		x_dot(3) = 0;
-	 }
-	 x_dot(2) = 0;
-	 x_dot(4) = 0;
+		// Create state derivative vector
+		// Avoid division by zero
+		if (fabs(x_sig(4)) > 0.001){
+			x_dot(0) = (x_sig(2)/x_sig(4))*(sin(x_sig(3)+x_sig(4)*delta_t) - sin(x_sig(3)) );
+			x_dot(1) = (x_sig(2)/x_sig(4))*(-cos(x_sig(3)+x_sig(4)*delta_t) + cos(x_sig(3)) );
+			x_dot(3) = x_sig(4)*delta_t;
+		}
+		else{
+			x_dot(0) = x_sig(2)*cos(x_sig(3)*delta_t);
+			x_dot(1) = x_sig(2)*sin(x_sig(3)*delta_t);
+			x_dot(3) = 0;
+		}
+		x_dot(2) = 0;
+		x_dot(4) = 0;
 	 
-	 // Create noise vector
-	 nu_dot(0) = 0.5*(delta_t*delta_t)*cos(x(3))*nu(0);
-	 nu_dot(1) = 0.5*(delta_t*delta_t)*sin(x(3))*nu(0);
-	 nu_dot(2) = delta_t*nu(0);
-	 nu_dot(3) = 0.5*(delta_t*delta_t)*nu(1);
-	 nu_dot(4) = delta_t*nu(1);
-	// Write predicted sigma points into correct column
-	 Xsig_pred_.col(i) = x + x_dot + nu_dot;
+		// Create noise vector
+		nu_dot(0) = 0.5*(delta_t*delta_t)*cos(x_sig(3))*nu(0);
+		nu_dot(1) = 0.5*(delta_t*delta_t)*sin(x_sig(3))*nu(0);
+		nu_dot(2) = delta_t*nu(0);
+		nu_dot(3) = 0.5*(delta_t*delta_t)*nu(1);
+		nu_dot(4) = delta_t*nu(1);
+		// Write predicted sigma points into correct column
+		Xsig_pred_.col(i) = x_sig + x_dot + nu_dot;
 	}
 	
 	// Predict state and covariance
 	// Calculate mean
-  x_.fill(0);
-  for (int i=0;i<(2*n_aug_+1);i++){
+	x_.fill(0);
+	for (int i=0;i<(2*n_aug_+1);i++){
 		x_ += weights_(i)*Xsig_pred_.col(i);
-  }
+	}
 	// Calculate covariance
 	P_.fill(0);
 	// State difference
 	VectorXd x_diff = VectorXd(n_x_);
-	for (int i=0;i<(2*n_aug_+1);i++){
-		x_diff = Xsig_pred_.col(i) - x_;
+	for (int i=1;i<(2*n_aug_+1);i++){
+		//!x_diff = Xsig_pred_.col(i) - x_;
+		x_diff = Xsig_pred_.col(i) - Xsig_pred_.col(0);
 		// Angle normalization
 		x_diff(3) = atan2(sin(x_diff(3)),cos(x_diff(3)));
 		P_ += weights_(i)*x_diff*x_diff.transpose();
