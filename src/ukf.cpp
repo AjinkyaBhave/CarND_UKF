@@ -130,8 +130,8 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_pack) {
 			// Set the state with the lidar initial location, 15 km/hr velocity, and driving straight.
 			x_ << measurement_pack.raw_measurements_[0], measurement_pack.raw_measurements_[1], 4, 0, 0;
 			// Initialise error covariance matrix based on lidar sensor std's
-			P_(0,0) = 0.5;
-			P_(1,1) = 0.5;
+			P_(0,0) = 0.0225;
+			P_(1,1) = 0.0225;
 			P_(2,2) = 1;
 			P_(3,3) = 1;
 			P_(4,4) = 1;
@@ -248,14 +248,21 @@ void UKF::Prediction(double delta_t) {
 	for (int i=0;i<(2*n_aug_+1);i++){
 		x_ += weights_(i)*Xsig_pred_.col(i);
 	}
+	// Yaw angle normalization
+	//x_(3) = atan2(sin(x_(3)),cos(x_(3)));
+	
 	// Calculate covariance
 	P_.fill(0);
 	// State difference
 	VectorXd x_diff = VectorXd(n_x_);
 	for (int i=1;i<(2*n_aug_+1);i++){
-		//!x_diff = Xsig_pred_.col(i) - x_;
+		//x_diff = Xsig_pred_.col(i) - x_;
+		// Since lambda is negative, use modified form of covariance calculation. 
+		// This ensures P_ is positive semi-definite. Loop index from 1 to 2*n_aug_ + 1 to prevent zero values for i=0;
+		// Reference: A New Method for the Nonlinear Transformation of Means and Covariances in Filters and Estimators, Julier.
+		// Section III, last paragraph and AppendiX III.
 		x_diff = Xsig_pred_.col(i) - Xsig_pred_.col(0);
-		// Angle normalization
+		// Yaw angle normalization
 		x_diff(3) = atan2(sin(x_diff(3)),cos(x_diff(3)));
 		P_ += weights_(i)*x_diff*x_diff.transpose();
 	}  
@@ -284,7 +291,7 @@ void UKF::UpdateLidar(MeasurementPackage measurement_pack) {
 	// Measurement innovation
 	VectorXd innovation = VectorXd(n_lidar_);
 
-	//transform sigma points into Lidar measurement space
+	// Transform sigma points into Lidar measurement space
 	for (int i=0; i < (2*n_aug_+1);i++)
 	{
 		z_sig(0) = Xsig_pred_.col(i)(0);
@@ -296,23 +303,31 @@ void UKF::UpdateLidar(MeasurementPackage measurement_pack) {
 	for (int i=0;i<(2*n_aug_+1);i++){
 		z_pred += weights_(i)*Zsig_pred.col(i);
 	}
-	//calculate measurement covariance matrix S
+	// Phi angle normalisation. 
+	// DOES NOT WORK. Creates large RMSE.
+	//z_pred(1) = atan2(sin(z_pred(1)), cos(z_pred(1)));
+	
+	// Calculate measurement covariance matrix
 	S.fill(0);
 	
 	for (int i=0;i<(2*n_aug_+1);i++){
 		z_diff = Zsig_pred.col(i) - z_pred;
+		// Phi angle normalisation
+		z_diff(1) = atan2(sin(z_diff(1)), cos(z_diff(1)));
 		S += weights_(i)*z_diff*z_diff.transpose();
 	}
 	S += R_lidar_;
 	
 	// Update state and covariance
-	// calculate cross correlation matrix
+	// Calculate cross covariance matrix
 	Tc.fill(0);
 	for (int i=0;i<(2*n_aug_+1);i++){
 		x_diff = Xsig_pred_.col(i) - x_;
-		// Angle normalization
+		// Yaw angle normalization
 		x_diff(3) = atan2(sin(x_diff(3)),cos(x_diff(3)));
 		z_diff = Zsig_pred.col(i) - z_pred;
+		// Phi angle normalisation
+		z_diff(1) = atan2(sin(z_diff(1)), cos(z_diff(1)));
 		Tc += weights_(i)*x_diff*z_diff.transpose();
 	}
 	// Calculate Kalman gain K;
@@ -353,7 +368,7 @@ void UKF::UpdateRadar(MeasurementPackage measurement_pack) {
 	// Measurement innovation
 	VectorXd innovation = VectorXd(n_radar_);
 
-	//transform sigma points into Radar measurement space
+	// Transform sigma points into Radar measurement space
 	for (int i=0; i < (2*n_aug_+1);i++)
 	{
 		x_sig = Xsig_pred_.col(i);
@@ -362,32 +377,31 @@ void UKF::UpdateRadar(MeasurementPackage measurement_pack) {
 		z_sig(2) = (x_sig(0)*cos(x_sig(3))*x_sig(2)+x_sig(1)*sin(x_sig(3))*x_sig(2))/z_sig(0);
 		Zsig_pred.col(i) = z_sig;
 	}
-	//calculate mean predicted measurement
+	// Calculate mean predicted measurement
 	z_pred.fill(0);
 	for (int i=0;i<(2*n_aug_+1);i++){
 		z_pred += weights_(i)*Zsig_pred.col(i);
 	}
-	//calculate measurement covariance matrix S
+	// Calculate measurement covariance matrix 
 	S.fill(0);
 	
 	for (int i=0;i<(2*n_aug_+1);i++){
 		z_diff = Zsig_pred.col(i) - z_pred;
-		// Angle normalization
-		while (z_diff(1)> M_PI) z_diff(1)-=2.*M_PI;
-		while (z_diff(1)<-M_PI) z_diff(1)+=2.*M_PI;
+		// Phi angle normalisation
+		z_diff(1) = atan2(sin(z_diff(1)), cos(z_diff(1)));
 		S += weights_(i)*z_diff*z_diff.transpose();
 	}
 	S += R_radar_;
 	
 	// Update state and covariance
-	// calculate cross correlation matrix
+	// Calculate cross covariance matrix
 	Tc.fill(0);
 	for (int i=0;i<(2*n_aug_+1);i++){
 		x_diff = Xsig_pred_.col(i) - x_;
-		// Angle normalization
+		// Yaw angle normalization
 		x_diff(3) = atan2(sin(x_diff(3)),cos(x_diff(3)));
 		z_diff = Zsig_pred.col(i) - z_pred;
-		// Angle normalization
+		// Phi angle normalization
 		z_diff(1) = atan2(sin(z_diff(1)),cos(z_diff(1)));
 		Tc += weights_(i)*x_diff*z_diff.transpose();
 	}
